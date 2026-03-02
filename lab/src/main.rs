@@ -1,19 +1,19 @@
 use chrono::{DateTime, TimeZone, Utc};
 use iced::{
     Task,
-    widget::{Column, button, column},
+    widget::{Text, button, column},
 };
 use rfd::FileDialog;
 use std::io::stdin;
 
-use iced::{
-    Alignment, Color, Element, Length, Theme,
-    widget::{container, responsive, row, scrollable, text},
-};
+use iced::Theme;
+
+mod viewnupdate;
 
 #[derive(Default)]
-struct AppState {
-    path: String,
+pub struct AppState {
+    pub path: String,
+    pub fuel_storage: FuelStorage,
 }
 
 impl std::fmt::Display for FuelStorage {
@@ -27,7 +27,29 @@ impl std::fmt::Display for FuelStorage {
     }
 }
 
-struct FuelStorage {
+impl FuelStorage {
+    pub fn new() -> Self {
+        FuelStorage {
+            fuel_storage: Vec::new(),
+        }
+    }
+    pub fn parse(&mut self, content: &str) {
+        for line in content.lines() {
+            println!("line: {}", line);
+            let fuel = Fuel::new().from_string(line);
+            if fuel.is_ok() {
+                //need to hook it to logger later
+                println!("ok");
+                self.fuel_storage.push(fuel.unwrap());
+            } else {
+                println!("err: {}", fuel.err().unwrap());
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct FuelStorage {
     fuel_storage: Vec<Fuel>,
 }
 
@@ -41,105 +63,7 @@ pub enum Message {
     SaveNow,
 }
 
-impl AppState {
-    pub fn view(&self) -> Element<Message> {
-        responsive(|size| {
-            let is_narrow = size.width < 700.0;
-            let path_display = text(format!("Файл: {}", self.path));
-            let top_controls = row![
-                button("Open interactively...").on_press(Message::SelectFile),
-                button("Save as...").on_press(Message::SaveAs)
-            ]
-            .spacing(10);
-            let top_bar = row![path_display, top_controls]
-                .spacing(10)
-                .align_y(Alignment::Center);
-
-            //let top_bar = if is_narrow {
-            //    column![path_display, top_controls].spacing(10)
-            // } else {
-            //     row![path_display, horizontal_space(), top_controls]
-            //         .spacing(10)
-            //         .align_y(Alignment::Center)
-            // };
-
-            let col_date = Length::FillPortion(1);
-            let col_type = Length::FillPortion(1);
-            let col_price = Length::FillPortion(1);
-            let header = container(
-                row![
-                    text("Date").width(col_date),
-                    text("Fuel type").width(col_type),
-                    text("Price").width(col_price),
-                ]
-                .spacing(10),
-            )
-            .style(|_theme: &Theme| container::Style {
-                background: Some(iced::Background::Color(Color::from_rgb(0.96, 0.96, 0.96))),
-                ..Default::default()
-            })
-            .padding(5);
-            let row1 = container(row![].spacing(10))
-                .style(|_theme: &Theme| container::Style {
-                    background: Some(iced::Background::Color(Color::from_rgb(0.2, 0.55, 0.9))),
-                    text_color: Some(Color::WHITE),
-                    ..Default::default()
-                })
-                .padding(5);
-            let row2 = container(row![].spacing(10)).padding(5);
-            let table =
-                container(scrollable(column![header, row1, row2].spacing(1)).height(Length::Fill))
-                    .style(|_theme: &Theme| container::Style {
-                        background: Some(iced::Background::Color(Color::WHITE)),
-                        border: iced::Border {
-                            color: Color::from_rgb(0.85, 0.85, 0.85),
-                            width: 1.0,
-                            radius: 4.0.into(),
-                        },
-                        ..Default::default()
-                    })
-                    .height(Length::Fill);
-            let left_buttons = row![
-                button("Add").on_press(Message::Add),
-                button("Delete selected").on_press(Message::DeleteSelected)
-            ]
-            .spacing(10);
-            let save_button = button("Сохранить сейчас").on_press(Message::SaveNow);
-            let bottom_bar = row![left_buttons, save_button]
-                .spacing(10)
-                .align_y(Alignment::Center);
-
-            // let bottom_bar = if is_narrow {
-            //     column![left_buttons, save_button].spacing(10)
-            // } else {
-            //     row![left_buttons, horizontal_space(), save_button]
-            //         .spacing(10)
-            //         .align_y(Alignment::Center)
-            // };
-            column![top_bar, table, bottom_bar]
-                .spacing(15)
-                .padding(20)
-                .height(Length::Fill)
-                .width(Length::Fill)
-                .into()
-        })
-        .into()
-    }
-
-    pub fn update(&mut self, message: Message) -> Task<Message> {
-        match message {
-            Message::SelectFile => Task::perform(pick_file_async(), Message::FileSelected),
-            Message::FileSelected(path) => {
-                println!("{}", path);
-                self.path = path;
-                Task::none()
-            }
-            _ => Task::none(),
-        }
-    }
-}
-
-async fn pick_file_async() -> String {
+pub async fn pick_file_async() -> String {
     let path = FileDialog::new()
         .set_directory("~")
         .add_filter("Select fuel", &["csv", "txt"])
@@ -147,8 +71,7 @@ async fn pick_file_async() -> String {
         .pick_file();
 
     let p = match path {
-        //format!("{:?}",Some(path));
-        Some(p) => format!("{:?}", Some(p)),
+        Some(p) => p.as_path().to_string_lossy().to_string(),
         _ => String::new(),
     };
     return p;
@@ -161,7 +84,7 @@ struct Fuel {
 }
 
 impl Fuel {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Fuel {
             name: String::from("Not defined"),
             date: Utc::now(),
