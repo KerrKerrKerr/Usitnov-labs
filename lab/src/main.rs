@@ -1,5 +1,87 @@
 use chrono::{DateTime, TimeZone, Utc};
-use std::io::stdin;
+use std::{io::stdin, os::unix::thread};
+use iced::{Task, widget::{Column, button, column, text}, window};
+use std::process::Command;
+use rfd::FileDialog;
+
+#[derive(Default)]
+struct AppState {
+    path: String,
+}
+
+
+impl std::fmt::Display for FuelStorage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut out: String = String::new();
+        for i in &self.fuel_storage.into_iter() {
+            out += &format!("{}\n",i);
+        }
+
+        write!(
+            f,"{}",out
+        )
+        // write!(
+        //     f,
+        //     "Name: {}, Date: {}, Price: {:.2}",
+        //     self.name,
+        //     self.date.format("%Y-%m-%d %H:%M:%S"),
+        //     self.price
+        // )
+    }
+}
+
+struct FuelStorage {
+    fuel_storage: Vec<Fuel>,
+}
+
+
+
+#[derive(Debug, Clone)]
+pub enum Message {
+    SelectFile,
+    FileSelected(String)
+}
+
+impl AppState {
+    pub fn view(&self) -> Column<Message> {
+        column![
+            button("Open file").on_press(Message::SelectFile),
+
+        ]
+    }
+    pub fn update(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::SelectFile => {
+                Task::perform(pick_file_async(), Message::FileSelected )
+            }
+            Message::FileSelected(path) => {
+                println!("{}",path);
+                self.path = path;
+                Task::none()
+            }
+            //Message::Decrement => {
+            //    self.value -= 1;
+            //}
+        }
+    }
+}
+
+async fn pick_file_async() -> String {
+    let path = FileDialog::new()
+        .set_directory("~")
+        .add_filter("Select fuel", &["csv","txt"])
+        .set_can_create_directories(true)
+        .pick_file();
+
+
+    
+    let p = match path {
+        //format!("{:?}",Some(path));
+        Some(p) => format!("{:?}",Some(p)),
+        _ => String::new()
+    };
+    return p;
+}
 
 struct Fuel {
     name: String,
@@ -71,9 +153,7 @@ impl std::fmt::Display for Fuel {
 }
 
 
-
 //fuel = Fuel::new_param("Gasoline".to_string(), Utc.ymd(2024, 6, 1).and_hms(12, 0, 0), 3.99);
-fn main() {
-
-    print!("{} \n", Fuel::input_secure());
+fn main() -> iced::Result {
+    iced::application(AppState::default, AppState::update, AppState::view).window_size((400, 300)).resizable(false).run()
 }
