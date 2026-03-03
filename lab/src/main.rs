@@ -1,9 +1,6 @@
 use chrono::{DateTime, TimeZone, Utc};
-use iced::{
-    Task,
-    widget::{Text, button, column},
-};
 use rfd::FileDialog;
+use std::collections::HashSet;
 use std::io::stdin;
 
 use iced::Theme;
@@ -14,6 +11,13 @@ mod viewnupdate;
 pub struct AppState {
     pub path: String,
     pub fuel_storage: FuelStorage,
+    pub add_pressed: bool,
+    pub input_form: String,
+    pub last_pending: bool,
+    pub editing_date: String,
+    pub editing_name: String,
+    pub editing_price: String,
+    pub selected_rows: HashSet<usize>,
 }
 
 impl std::fmt::Display for FuelStorage {
@@ -58,9 +62,18 @@ pub enum Message {
     SelectFile,
     FileSelected(String),
     SaveAs,
+    SaveInteractively,
+    FileSaved(String),
     Add,
     DeleteSelected,
     SaveNow,
+    InputChanged(String),
+    EditingDateChanged(String),
+    EditingNameChanged(String),
+    EditingPriceChanged(String),
+    ToggleRow(usize),
+    CommitPendingRow,
+    PasteNow,
 }
 
 pub async fn pick_file_async() -> String {
@@ -69,6 +82,20 @@ pub async fn pick_file_async() -> String {
         .add_filter("Select fuel", &["csv", "txt"])
         .set_can_create_directories(true)
         .pick_file();
+
+    let p = match path {
+        Some(p) => p.as_path().to_string_lossy().to_string(),
+        _ => String::new(),
+    };
+    return p;
+}
+
+pub async fn save_file_async() -> String {
+    let path = FileDialog::new()
+        .set_directory("~")
+        .add_filter("Select fuel", &["csv", "txt"])
+        .set_can_create_directories(true)
+        .save_file();
 
     let p = match path {
         Some(p) => p.as_path().to_string_lossy().to_string(),
@@ -122,7 +149,7 @@ impl Fuel {
         return Ok(Fuel::new_param(name, date, price));
     }
 
-    fn input_secure() -> Self {
+    fn _input_secure() -> Self {
         loop {
             let mut input = String::new();
             println!("Enter fuel data in the format: <String>,<Time (yyyy.mm.dd hh.mm)>, <f64>");
