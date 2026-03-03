@@ -19,6 +19,7 @@ pub struct AppState {
     pub editing_price: String,
     pub editing_color: String,
     pub selected_rows: HashSet<usize>,
+    pub some_string: String,
 }
 
 impl std::fmt::Display for FuelStorage {
@@ -109,6 +110,7 @@ pub enum Message {
     ToggleRow(usize),
     CommitPendingRow,
     PasteNow,
+    Dummy(String),
 }
 
 pub async fn pick_file_async() -> String {

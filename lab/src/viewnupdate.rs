@@ -143,7 +143,11 @@ impl AppState {
                     row![column![add_button, delete_selected_button, save_button].spacing(10)]
             }
 
-            column![top_bar, table, bottom_bar]
+            let some_button = button("Generic button");
+            let some_input_text = text_input("placeholder", &self.some_string).on_input(Message::Dummy);
+            let just_row = row![some_button,some_input_text];
+
+            column![top_bar, table, bottom_bar, just_row]
                 .spacing(15)
                 .padding(20)
                 .height(Length::Fill)
@@ -252,6 +256,9 @@ impl AppState {
                 } else {
                     self.selected_rows.insert(index);
                 }
+                Task::none()
+            } Message::Dummy(soem_str) => {
+                self.some_string = soem_str;
                 Task::none()
             }
             _ => {
