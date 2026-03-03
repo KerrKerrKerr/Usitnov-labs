@@ -7,16 +7,6 @@ use iced::{
     widget::{Text, button, column, container, responsive, row, scrollable, text},
 };
 
-impl Fuel {
-    fn serialize_to_table(&self) -> Vec<String> {
-        vec![
-            self.date.to_string(),
-            self.name.clone(),
-            format!("{:.2}", self.price),
-        ]
-    }
-}
-
 impl AppState {
 
     
@@ -41,11 +31,13 @@ impl AppState {
             let col_date = Length::FillPortion(4);
             let col_type = Length::FillPortion(3);
             let col_price = Length::FillPortion(1);
+            let col_color = Length::FillPortion(2);
             let header = container(
                 row![
                     text("Date").width(col_date),
                     text("Fuel type").width(col_type),
                     text("Price").width(col_price),
+                    text("Color").width(col_color),
                 ]
                 .spacing(10),
             )
@@ -58,11 +50,11 @@ impl AppState {
             let mut table_column = column![header].spacing(1);
             for (i, fuel) in self.fuel_storage.get_all().iter().enumerate() {
                 let is_selected = self.selected_rows.contains(&i);
-                let base_bg = if i % 2 == 0 {
-                    Color::from_rgb(0.96, 0.96, 0.96)
-                } else {
-                    Color::from_rgb(1.0, 1.0, 1.0)
-                };
+                
+                let base_bg =   Color::from_rgb8(fuel.color.0, fuel.color.1, fuel.color.2);
+                
+                
+                
                 let row_background = if is_selected {
                     Color::from_rgb(0.2, 0.6, 0.2)
                 } else {
@@ -78,6 +70,7 @@ impl AppState {
                     text(fuel.date.to_string()).width(col_date),
                     text(fuel.name.to_string()).width(col_type),
                     text(fuel.price.to_string()).width(col_price),
+                    text(format!("{}:{}:{}", fuel.color.0, fuel.color.1, fuel.color.2)).width(col_color),
                 ]
                 .spacing(10);
 
@@ -112,6 +105,9 @@ impl AppState {
                         text_input("price", &self.editing_price)
                             .on_input(Message::EditingPriceChanged)
                             .width(col_price),
+                        text_input("r:g:b", &self.editing_color)
+                            .on_input(Message::EditingColorChanged)
+                            .width(col_color),
                     ]
                     .spacing(10),
                 )
@@ -186,6 +182,7 @@ impl AppState {
                     self.editing_date.clear();
                     self.editing_name.clear();
                     self.editing_price.clear();
+                    self.editing_color.clear();
                 }
                 Task::none()
             }
@@ -205,10 +202,14 @@ impl AppState {
                 self.editing_price = value;
                 Task::none()
             }
+            Message::EditingColorChanged(value) => {
+                self.editing_color = value;
+                Task::none()
+            }
             Message::CommitPendingRow => {
                 let input_line = format!(
-                    "{},{},{}",
-                    &self.editing_name, &self.editing_date, &self.editing_price
+                    "{},{},{},{}",
+                    &self.editing_name, &self.editing_date, &self.editing_price, &self.editing_color
                 );
                 if let Ok(fuel) = Fuel::new().from_string(&input_line) {
                     self.fuel_storage.push(fuel);
@@ -216,6 +217,7 @@ impl AppState {
                     self.editing_date.clear();
                     self.editing_name.clear();
                     self.editing_price.clear();
+                    self.editing_color.clear();
                 }
                 Task::none()
             }

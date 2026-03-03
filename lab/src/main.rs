@@ -3,7 +3,7 @@ use rfd::FileDialog;
 use std::collections::HashSet;
 use std::io::stdin;
 
-use iced::Theme;
+use iced::{Color, Theme};
 
 mod viewnupdate;
 
@@ -17,6 +17,7 @@ pub struct AppState {
     pub editing_date: String,
     pub editing_name: String,
     pub editing_price: String,
+    pub editing_color: String,
     pub selected_rows: HashSet<usize>,
 }
 
@@ -71,10 +72,13 @@ impl FuelStorage {
             .iter()
             .map(|fuel| {
                 format!(
-                    "{},{},{:.2}",
+                    "{},{},{:.2},{}:{}:{}",
                     fuel.name,
                     fuel.date.format("%Y.%m.%d %H:%M"),
-                    fuel.price
+                    fuel.price,
+                    fuel.color.0,
+                    fuel.color.1,
+                    fuel.color.2
                 )
             })
             .collect::<Vec<String>>()
@@ -101,6 +105,7 @@ pub enum Message {
     EditingDateChanged(String),
     EditingNameChanged(String),
     EditingPriceChanged(String),
+    EditingColorChanged(String),
     ToggleRow(usize),
     CommitPendingRow,
     PasteNow,
@@ -138,6 +143,7 @@ struct Fuel {
     name: String,
     date: DateTime<Utc>,
     price: f64,
+    color: (u8,u8,u8)
 }
 
 impl Fuel {
@@ -146,20 +152,22 @@ impl Fuel {
             name: String::from("Not defined"),
             date: Utc::now(),
             price: -1.0,
+            color: (0,0,0)
         }
     }
-    fn new_param(name_: String, date_: DateTime<Utc>, price_: f64) -> Self {
+    fn new_param(name_: String, date_: DateTime<Utc>, price_: f64,color_: (u8,u8,u8)) -> Self {
         Fuel {
             name: name_,
             date: date_,
             price: price_,
+            color: color_,
         }
     }
-    //Format <String>,<Time (yyyy.mm.dd hh.mm)>, <f64>
+    //Format <String>,<Time (yyyy.mm.dd hh.mm)>, <f64>,u8:u8:u8
     fn from_string(self, input: &str) -> Result<Self, String> {
         let parts: Vec<&str> = input.split(',').collect();
-        if parts.len() != 3 {
-            return Err("Input must have three parts separated by commas".to_string());
+        if parts.len() != 4 {
+            return Err("Input must have four parts separated by commas".to_string());
         }
         let name = parts[0].trim().to_string();
         if name.is_empty() {
@@ -170,19 +178,29 @@ impl Fuel {
         let price = price_str
             .parse::<f64>()
             .map_err(|e| format!("Failed to parse price: {}", e))?;
+        let color_string = parts[3].trim();
+        let color_parts: Vec<&str> = color_string.split(":").collect();
+        if color_parts.len() != 3 {
+            return Err("invalid color format u8:u8:u8".to_string());
+        }
+        let color: (u8, u8, u8) = (
+            color_parts[0].parse::<u8>().map_err(|e| format!("Failed to parse color R: {}", e))?,
+            color_parts[1].parse::<u8>().map_err(|e| format!("Failed to parse color G: {}", e))?,
+            color_parts[2].parse::<u8>().map_err(|e| format!("Failed to parse color B: {}", e))?,
+        );
         //don;t care if deprecated
         let date = match Utc.datetime_from_str(date_str, "%Y.%m.%d %H:%M") {
             Ok(d) => d,
-            Err(_) => return Err("Invalid date format. Expected yyyy.mm.dd hh.mm".to_string()),
+            Err(_) => return Err("Invalid date format. Expected yyyy.mm.dd hh:mm".to_string()),
         };
 
-        return Ok(Fuel::new_param(name, date, price));
+        return Ok(Fuel::new_param(name, date, price,color));
     }
 
     fn _input_secure() -> Self {
         loop {
             let mut input = String::new();
-            println!("Enter fuel data in the format: <String>,<Time (yyyy.mm.dd hh.mm)>, <f64>");
+            println!("Enter fuel data in the format: <String>,<Time (yyyy.mm.dd hh.mm)>, <f64>,u8:u8:u8");
             stdin()
                 .read_line(&mut input)
                 .expect("Failed to read input, fatal error");
@@ -202,10 +220,13 @@ impl std::fmt::Display for Fuel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Name: {}, Date: {}, Price: {:.2}",
+            "Name: {}, Date: {}, Price: {:.2}, Color {}:{}:{}",
             self.name,
             self.date.format("%Y-%m-%d %H:%M:%S"),
-            self.price
+            self.price,
+            self.color.0,
+            self.color.1,
+            self.color.2
         )
     }
 }
