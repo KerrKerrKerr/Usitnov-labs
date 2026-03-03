@@ -1,11 +1,9 @@
 use crate::Fuel;
 use crate::{AppState, FuelStorage, Message, pick_file_async, save_file_async};
 use chrono::Utc;
-use iced::Length::Shrink;
-use iced::widget::{TextInput, text_input};
+use iced::widget::{text_input};
 use iced::{
     Alignment, Color, Element, Length, Task, Theme,
-    alignment::Vertical::Bottom,
     widget::{Text, button, column, container, responsive, row, scrollable, text},
 };
 
@@ -20,22 +18,9 @@ impl Fuel {
 }
 
 impl AppState {
-    fn serialize_storage(&self) -> String {
-        self.fuel_storage
-            .fuel_storage
-            .iter()
-            .map(|fuel| {
-                format!(
-                    "{},{},{:.2}",
-                    fuel.name,
-                    fuel.date.format("%Y.%m.%d %H:%M"),
-                    fuel.price
-                )
-            })
-            .collect::<Vec<String>>()
-            .join("\n")
-    }
-    pub fn view(&self) -> Element<Message> {
+
+    
+    pub fn view(&self) -> Element<'_, Message> {
         responsive(|size| {
             //println!("{}", size.width);
             let is_narrow = size.width < 450.0;
@@ -71,7 +56,7 @@ impl AppState {
             .padding(5);
 
             let mut table_column = column![header].spacing(1);
-            for (i, fuel) in self.fuel_storage.fuel_storage.iter().enumerate() {
+            for (i, fuel) in self.fuel_storage.get_all().iter().enumerate() {
                 let is_selected = self.selected_rows.contains(&i);
                 let base_bg = if i % 2 == 0 {
                     Color::from_rgb(0.96, 0.96, 0.96)
@@ -181,13 +166,12 @@ impl AppState {
                     Task::none()
                 } else {
                     self.path = path.clone();
-                    let contents = self.serialize_storage();
+                    let contents = self.fuel_storage.serialize_storage();
                     let _ = std::fs::write(&path, contents);
                     Task::none()
                 }
             }
             Message::FileSelected(path) => {
-                println!("{}", path);
                 self.path = path.clone();
                 if let Some(contents) = std::fs::read_to_string(&path).ok() {
                     self.fuel_storage.parse(&contents);
@@ -227,7 +211,7 @@ impl AppState {
                     &self.editing_name, &self.editing_date, &self.editing_price
                 );
                 if let Ok(fuel) = Fuel::new().from_string(&input_line) {
-                    self.fuel_storage.fuel_storage.push(fuel);
+                    self.fuel_storage.push(fuel);
                     self.last_pending = false;
                     self.editing_date.clear();
                     self.editing_name.clear();
@@ -243,7 +227,7 @@ impl AppState {
                 if self.path.trim().is_empty() {
                     self.path = "No file opened. Use Save interactively...".to_string();
                 } else {
-                    let contents = self.serialize_storage();
+                    let contents = self.fuel_storage.serialize_storage();
                     let _ = std::fs::write(&self.path, contents);
                 }
                 Task::none()
@@ -251,7 +235,7 @@ impl AppState {
             Message::DeleteSelected => {
                 if !self.selected_rows.is_empty() {
                     let mut index = 0usize;
-                    self.fuel_storage.fuel_storage.retain(|_| {
+                    self.fuel_storage.retain(|_| {
                         let keep = !self.selected_rows.contains(&index);
                         index += 1;
                         keep
@@ -268,7 +252,9 @@ impl AppState {
                 }
                 Task::none()
             }
-            _ => Task::none(),
+            _ => {
+                println!("Tried invoking undimplemented message, idk which one though");
+                Task::none()},
         }
     }
 }

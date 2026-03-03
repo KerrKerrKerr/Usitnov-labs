@@ -37,18 +37,48 @@ impl FuelStorage {
             fuel_storage: Vec::new(),
         }
     }
+    
+    pub fn get_all(&self) -> &[Fuel] {
+        &self.fuel_storage
+    }
+    
+    pub fn push(&mut self, fuel: Fuel) {
+        self.fuel_storage.push(fuel);
+    }
+    
+    pub fn retain<F>(&mut self, f: F)
+    where
+        F: FnMut(&Fuel) -> bool,
+    {
+        self.fuel_storage.retain(f);
+    }
+
     pub fn parse(&mut self, content: &str) {
         for line in content.lines() {
             println!("line: {}", line);
             let fuel = Fuel::new().from_string(line);
             if fuel.is_ok() {
                 //need to hook it to logger later
-                println!("ok");
+                //println!("ok");
                 self.fuel_storage.push(fuel.unwrap());
             } else {
                 println!("err: {}", fuel.err().unwrap());
             }
         }
+    }
+    pub fn serialize_storage(&self) -> String {
+        self.fuel_storage
+            .iter()
+            .map(|fuel| {
+                format!(
+                    "{},{},{:.2}",
+                    fuel.name,
+                    fuel.date.format("%Y.%m.%d %H:%M"),
+                    fuel.price
+                )
+            })
+            .collect::<Vec<String>>()
+            .join("\n")
     }
 }
 
