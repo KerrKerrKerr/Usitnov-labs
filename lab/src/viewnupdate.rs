@@ -1,15 +1,13 @@
-use crate::Fuel;
-use crate::{AppState, FuelStorage, Message, pick_file_async, save_file_async};
+use crate::model::{Command, Condition, Fuel, CommandParser};
+use crate::{AppState, Message, Command, pick_command_file_async, pick_file_async, save_file_async};
 use chrono::Utc;
-use iced::widget::{text_input};
+use iced::widget::text_input;
 use iced::{
     Alignment, Color, Element, Length, Task, Theme,
     widget::{Text, button, column, container, responsive, row, scrollable, text},
 };
 
 impl AppState {
-
-    
     pub fn view(&self) -> Element<'_, Message> {
         responsive(|size| {
             //println!("{}", size.width);
@@ -20,12 +18,13 @@ impl AppState {
             let save_button = button("Save interactively...").on_press(Message::SaveInteractively);
 
             let mut top_bar = row![];
+            let command_button = button("Load Commands...").on_press(Message::SelectCommandFile);
             if is_narrow == false {
-                top_bar = row![open_button, save_button, path_display.width(Length::Shrink)]
+                top_bar = row![open_button, command_button, save_button, path_display.width(Length::Shrink)]
                     .spacing(10)
                     .align_y(Alignment::Center);
             } else {
-                top_bar = row![column![path_display, open_button, save_button].spacing(10)];
+                top_bar = row![column![path_display, open_button, command_button, save_button].spacing(10)];
             }
 
             let col_date = Length::FillPortion(4);
@@ -50,11 +49,9 @@ impl AppState {
             let mut table_column = column![header].spacing(1);
             for (i, fuel) in self.fuel_storage.get_all().iter().enumerate() {
                 let is_selected = self.selected_rows.contains(&i);
-                
-                let base_bg =   Color::from_rgb8(fuel.color.0, fuel.color.1, fuel.color.2);
-                
-                
-                
+
+                let base_bg = Color::from_rgb8(fuel.color.0, fuel.color.1, fuel.color.2);
+
                 let row_background = if is_selected {
                     Color::from_rgb(0.2, 0.6, 0.2)
                 } else {
@@ -70,7 +67,11 @@ impl AppState {
                     text(fuel.date.to_string()).width(col_date),
                     text(fuel.name.to_string()).width(col_type),
                     text(fuel.price.to_string()).width(col_price),
-                    text(format!("{}:{}:{}", fuel.color.0, fuel.color.1, fuel.color.2)).width(col_color),
+                    text(format!(
+                        "{}:{}:{}",
+                        fuel.color.0, fuel.color.1, fuel.color.2
+                    ))
+                    .width(col_color),
                 ]
                 .spacing(10);
 
@@ -133,19 +134,21 @@ impl AppState {
                 button("Delete selected").on_press(Message::DeleteSelected);
 
             let save_button = button("Save now").on_press(Message::SaveNow);
+            let execute_command_button = button("Execute Commands").on_press(Message::ExecuteCommands);
             let mut bottom_bar = row![];
             if !is_narrow_2 {
-                bottom_bar = row![add_button, delete_selected_button, save_button]
+                bottom_bar = row![add_button, delete_selected_button, save_button, execute_command_button]
                     .spacing(10)
                     .align_y(Alignment::Center);
             } else {
                 bottom_bar =
-                    row![column![add_button, delete_selected_button, save_button].spacing(10)]
+                    row![column![add_button, delete_selected_button, save_button, execute_command_button].spacing(10)]
             }
 
             let some_button = button("Generic button");
-            let some_input_text = text_input("placeholder", &self.some_string).on_input(Message::Dummy);
-            let just_row = row![some_button,some_input_text];
+            let some_input_text =
+                text_input("placeholder", &self.some_string).on_input(Message::Dummy);
+            let just_row = row![some_button, some_input_text];
 
             column![top_bar, table, bottom_bar, just_row]
                 .spacing(15)
@@ -179,17 +182,6 @@ impl AppState {
                 self.selected_rows.clear();
                 Task::none()
             }
-            Message::Add => {
-                self.add_pressed = true;
-                if !self.last_pending {
-                    self.last_pending = true;
-                    self.editing_date.clear();
-                    self.editing_name.clear();
-                    self.editing_price.clear();
-                    self.editing_color.clear();
-                }
-                Task::none()
-            }
             Message::InputChanged(value) => {
                 self.input_form = value;
                 Task::none()
@@ -213,9 +205,12 @@ impl AppState {
             Message::CommitPendingRow => {
                 let input_line = format!(
                     "{},{},{},{}",
-                    &self.editing_name, &self.editing_date, &self.editing_price, &self.editing_color
+                    &self.editing_name,
+                    &self.editing_date,
+                    &self.editing_price,
+                    &self.editing_color
                 );
-                if let Ok(fuel) = Fuel::new().from_string(&input_line) {
+                if let Ok(fuel) = Fuel::from_string(&input_line) {
                     self.fuel_storage.push(fuel);
                     self.last_pending = false;
                     self.editing_date.clear();
@@ -229,12 +224,84 @@ impl AppState {
                 self.editing_date = Utc::now().format("%Y.%m.%d %H:%M").to_string();
                 Task::none()
             }
+            Message::SelectCommandFile => Task::perform(pick_command_file_async(), Message::CommandFileSelected),
+            Message::CommandFileSelected(path) => {
+                self.command_path = path.clone();
+                if let Some(contents) = std::fs::read_to_string(&path).ok() {
+                    let cmd_parser = CommandParser::new();
+                    let commands = cmd_parser.parse_content(&contents);
+                    // Execute commands and update storage
+                    for cmd in commands {
+                        match cmd {
+                            Command::Add(csv) => {
+                                if let Ok(fuel) = Fuel::from_string(&csv) {
+                                    self.fuel_storage.push(fuel);
+                                }
+                            }
+                            Command::Remove(condition) => {
+                                if let Ok(cond) = Condition::parse(&condition) {
+                                    self.fuel_storage.retain(|f: &Fuel| !cond.evaluate(f));
+                                }
+                            }
+                            Command::Save(_) => {
+                                // Save to specified file (optional)
+                                if let Some(save_path) = self.command_path.rsplit('/').next() {
+                                    if !save_path.is_empty() {
+                                        let contents = self.fuel_storage.serialize_storage();
+                                        let _ = std::fs::write(save_path, contents);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::ExecuteCommands => {
+                // Execute commands from loaded file
+                if !self.command_path.is_empty() {
+                    if let Some(contents) = std::fs::read_to_string(&self.command_path).ok() {
+                        let cmd_parser = CommandParser::new();
+                        let commands = cmd_parser.parse_content(&contents);
+                        for cmd in commands {
+                            match cmd {
+                                Command::Add(csv) => {
+                                    if let Ok(fuel) = Fuel::from_string(&csv) {
+                                        self.fuel_storage.push(fuel);
+                                    }
+                                }
+                                Command::Remove(condition) => {
+                                    if let Ok(cond) = Condition::parse(&condition) {
+                                        self.fuel_storage.retain(|f: &Fuel| !cond.evaluate(f));
+                                    }
+                                }
+                                Command::Save(save_path) => {
+                                    let contents = self.fuel_storage.serialize_storage();
+                                    let _ = std::fs::write(&save_path, contents);
+                                }
+                            }
+                        }
+                    }
+                }
+                Task::none()
+            }
             Message::SaveNow => {
                 if self.path.trim().is_empty() {
                     self.path = "No file opened. Use Save interactively...".to_string();
                 } else {
                     let contents = self.fuel_storage.serialize_storage();
                     let _ = std::fs::write(&self.path, contents);
+                }
+                Task::none()
+            }
+            Message::Add => {
+                self.add_pressed = true;
+                if !self.last_pending {
+                    self.last_pending = true;
+                    self.editing_date.clear();
+                    self.editing_name.clear();
+                    self.editing_price.clear();
+                    self.editing_color.clear();
                 }
                 Task::none()
             }
@@ -257,13 +324,15 @@ impl AppState {
                     self.selected_rows.insert(index);
                 }
                 Task::none()
-            } Message::Dummy(soem_str) => {
+            }
+            Message::Dummy(soem_str) => {
                 self.some_string = soem_str;
                 Task::none()
             }
             _ => {
                 println!("Tried invoking undimplemented message, idk which one though");
-                Task::none()},
+                Task::none()
+            }
         }
     }
 }
