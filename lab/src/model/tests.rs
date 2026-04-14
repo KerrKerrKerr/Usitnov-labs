@@ -1,12 +1,7 @@
-use crate::model::{Command, CommandParser, Condition, Fuel};
-use crate::{AppState, Message, pick_command_file_async, pick_file_async, save_file_async};
-use chrono::Utc;
-
-use crate::model::*;
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::model::*;
+    use chrono::Utc;
 
     // ==================== Command Tests ====================
 
@@ -525,8 +520,9 @@ mod tests {
                     let cond = Condition::parse(&condition).unwrap();
                     storage.retain(|f| !cond.evaluate(f));
                 }
-                Command::Save(_) => {
-                    // In real implementation, save to file
+                Command::Save(path) => {
+                    // TODO actullay test whether it writes
+                    println!("Triggered SAVE test to {}", &path);
                 }
             }
         }

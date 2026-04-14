@@ -1,6 +1,7 @@
-use crate::model::{Command, Condition, Fuel, CommandParser};
-use crate::{AppState, Message, Command, pick_command_file_async, pick_file_async, save_file_async};
+use crate::model::{Command, CommandParser, Condition, Fuel};
+use crate::{AppState, Message, pick_command_file_async, pick_file_async, save_file_async};
 use chrono::Utc;
+use std::path::{Path, PathBuf};
 use iced::widget::text_input;
 use iced::{
     Alignment, Color, Element, Length, Task, Theme,
@@ -8,6 +9,65 @@ use iced::{
 };
 
 impl AppState {
+    fn clear_pending_inputs(&mut self) {
+        self.editing_date.clear();
+        self.editing_name.clear();
+        self.editing_price.clear();
+        self.editing_color.clear();
+    }
+
+    fn save_storage_to_path(&self, path: &str) {
+        let contents = self.fuel_storage.serialize_storage();
+        let _ = std::fs::write(path, contents);
+    }
+
+    fn resolve_save_path(command_file_path: &str, save_path: &str) -> PathBuf {
+        let save_path = Path::new(save_path);
+        if save_path.is_absolute() {
+            return save_path.to_path_buf();
+        }
+
+        let command_parent = Path::new(command_file_path)
+            .parent()
+            .unwrap_or_else(|| Path::new("."));
+        command_parent.join(save_path)
+    }
+
+    fn apply_command(&mut self, command: Command, command_file_path: &str) {
+        match command {
+            Command::Add(csv) => {
+                if let Ok(fuel) = Fuel::from_string(&csv) {
+                    self.fuel_storage.push(fuel);
+                }
+            }
+            Command::Remove(condition) => {
+                if let Ok(cond) = Condition::parse(&condition) {
+                    self.fuel_storage.retain(|f: &Fuel| !cond.evaluate(f));
+                }
+            }
+            Command::Save(save_path) => {
+                let full_path = Self::resolve_save_path(command_file_path, &save_path);
+                if let Some(path_str) = full_path.to_str() {
+                    self.save_storage_to_path(path_str);
+                }
+            }
+        }
+    }
+
+    fn execute_command_content(&mut self, command_file_path: &str, contents: &str) {
+        let cmd_parser = CommandParser::new();
+        let commands = cmd_parser.parse_content(contents);
+        for command in commands {
+            self.apply_command(command, command_file_path);
+        }
+    }
+
+    fn execute_command_file(&mut self, command_file_path: &str) {
+        if let Ok(contents) = std::fs::read_to_string(command_file_path) {
+            self.execute_command_content(command_file_path, &contents);
+        }
+    }
+
     pub fn view(&self) -> Element<'_, Message> {
         responsive(|size| {
             //println!("{}", size.width);
@@ -20,11 +80,18 @@ impl AppState {
             let mut top_bar = row![];
             let command_button = button("Load Commands...").on_press(Message::SelectCommandFile);
             if is_narrow == false {
-                top_bar = row![open_button, command_button, save_button, path_display.width(Length::Shrink)]
-                    .spacing(10)
-                    .align_y(Alignment::Center);
+                top_bar = row![
+                    open_button,
+                    command_button,
+                    save_button,
+                    path_display.width(Length::Shrink)
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center);
             } else {
-                top_bar = row![column![path_display, open_button, command_button, save_button].spacing(10)];
+                top_bar = row![
+                    column![path_display, open_button, command_button, save_button].spacing(10)
+                ];
             }
 
             let col_date = Length::FillPortion(4);
@@ -134,15 +201,28 @@ impl AppState {
                 button("Delete selected").on_press(Message::DeleteSelected);
 
             let save_button = button("Save now").on_press(Message::SaveNow);
-            let execute_command_button = button("Execute Commands").on_press(Message::ExecuteCommands);
+            let execute_command_button =
+                button("Execute Commands").on_press(Message::ExecuteCommands);
             let mut bottom_bar = row![];
             if !is_narrow_2 {
-                bottom_bar = row![add_button, delete_selected_button, save_button, execute_command_button]
-                    .spacing(10)
-                    .align_y(Alignment::Center);
+                bottom_bar = row![
+                    add_button,
+                    delete_selected_button,
+                    save_button,
+                    execute_command_button
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center);
             } else {
-                bottom_bar =
-                    row![column![add_button, delete_selected_button, save_button, execute_command_button].spacing(10)]
+                bottom_bar = row![
+                    column![
+                        add_button,
+                        delete_selected_button,
+                        save_button,
+                        execute_command_button
+                    ]
+                    .spacing(10)
+                ]
             }
 
             let some_button = button("Generic button");
@@ -169,14 +249,14 @@ impl AppState {
                     Task::none()
                 } else {
                     self.path = path.clone();
-                    let contents = self.fuel_storage.serialize_storage();
-                    let _ = std::fs::write(&path, contents);
+                    self.save_storage_to_path(&path);
                     Task::none()
                 }
             }
             Message::FileSelected(path) => {
                 self.path = path.clone();
                 if let Some(contents) = std::fs::read_to_string(&path).ok() {
+                    self.fuel_storage.clear();
                     self.fuel_storage.parse(&contents);
                 }
                 self.selected_rows.clear();
@@ -213,10 +293,7 @@ impl AppState {
                 if let Ok(fuel) = Fuel::from_string(&input_line) {
                     self.fuel_storage.push(fuel);
                     self.last_pending = false;
-                    self.editing_date.clear();
-                    self.editing_name.clear();
-                    self.editing_price.clear();
-                    self.editing_color.clear();
+                    self.clear_pending_inputs();
                 }
                 Task::none()
             }
@@ -224,64 +301,23 @@ impl AppState {
                 self.editing_date = Utc::now().format("%Y.%m.%d %H:%M").to_string();
                 Task::none()
             }
-            Message::SelectCommandFile => Task::perform(pick_command_file_async(), Message::CommandFileSelected),
+            Message::SelectCommandFile => {
+                Task::perform(pick_command_file_async(), Message::CommandFileSelected)
+            }
             Message::CommandFileSelected(path) => {
-                self.command_path = path.clone();
-                if let Some(contents) = std::fs::read_to_string(&path).ok() {
-                    let cmd_parser = CommandParser::new();
-                    let commands = cmd_parser.parse_content(&contents);
-                    // Execute commands and update storage
-                    for cmd in commands {
-                        match cmd {
-                            Command::Add(csv) => {
-                                if let Ok(fuel) = Fuel::from_string(&csv) {
-                                    self.fuel_storage.push(fuel);
-                                }
-                            }
-                            Command::Remove(condition) => {
-                                if let Ok(cond) = Condition::parse(&condition) {
-                                    self.fuel_storage.retain(|f: &Fuel| !cond.evaluate(f));
-                                }
-                            }
-                            Command::Save(_) => {
-                                // Save to specified file (optional)
-                                if let Some(save_path) = self.command_path.rsplit('/').next() {
-                                    if !save_path.is_empty() {
-                                        let contents = self.fuel_storage.serialize_storage();
-                                        let _ = std::fs::write(save_path, contents);
-                                    }
-                                }
-                            }
-                        }
-                    }
+                if path.trim().is_empty() {
+                    return Task::none();
                 }
+
+                self.command_path = path.clone();
+                self.execute_command_file(&path);
                 Task::none()
             }
             Message::ExecuteCommands => {
                 // Execute commands from loaded file
                 if !self.command_path.is_empty() {
-                    if let Some(contents) = std::fs::read_to_string(&self.command_path).ok() {
-                        let cmd_parser = CommandParser::new();
-                        let commands = cmd_parser.parse_content(&contents);
-                        for cmd in commands {
-                            match cmd {
-                                Command::Add(csv) => {
-                                    if let Ok(fuel) = Fuel::from_string(&csv) {
-                                        self.fuel_storage.push(fuel);
-                                    }
-                                }
-                                Command::Remove(condition) => {
-                                    if let Ok(cond) = Condition::parse(&condition) {
-                                        self.fuel_storage.retain(|f: &Fuel| !cond.evaluate(f));
-                                    }
-                                }
-                                Command::Save(save_path) => {
-                                    let contents = self.fuel_storage.serialize_storage();
-                                    let _ = std::fs::write(&save_path, contents);
-                                }
-                            }
-                        }
-                    }
+                    let path = self.command_path.clone();
+                    self.execute_command_file(&path);
                 }
                 Task::none()
             }
@@ -289,8 +325,7 @@ impl AppState {
                 if self.path.trim().is_empty() {
                     self.path = "No file opened. Use Save interactively...".to_string();
                 } else {
-                    let contents = self.fuel_storage.serialize_storage();
-                    let _ = std::fs::write(&self.path, contents);
+                    self.save_storage_to_path(&self.path);
                 }
                 Task::none()
             }
@@ -298,10 +333,7 @@ impl AppState {
                 self.add_pressed = true;
                 if !self.last_pending {
                     self.last_pending = true;
-                    self.editing_date.clear();
-                    self.editing_name.clear();
-                    self.editing_price.clear();
-                    self.editing_color.clear();
+                    self.clear_pending_inputs();
                 }
                 Task::none()
             }

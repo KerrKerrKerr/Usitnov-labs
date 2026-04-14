@@ -1,12 +1,12 @@
 use rfd::FileDialog;
-use std::collections::HashSet;
+use std::{collections::HashSet, path::PathBuf, str::FromStr};
 
 use iced::Theme;
 
 mod model;
 mod viewnupdate;
 
-use model::{FuelParser, FuelStorage, CommandParser, Command};
+use model::{FuelParser, FuelStorage};
 
 #[derive(Default)]
 pub struct AppState {
@@ -77,46 +77,44 @@ pub enum Message {
     Dummy(String),
 }
 
-pub async fn pick_file_async() -> String {
-    let path = FileDialog::new()
-        .set_directory("~")
-        .add_filter("Select fuel", &["csv", "txt"])
-        .set_can_create_directories(true)
-        .pick_file();
-
-    let p = match path {
+fn sanitize_path(pathb: Option<PathBuf>) -> String {
+    return match pathb {
         Some(p) => p.as_path().to_string_lossy().to_string(),
         _ => String::new(),
     };
-    return p;
+}
+
+pub async fn pick_file_async() -> String {
+    let path = FileDialog::new()
+        .set_directory(std::env::current_dir().unwrap_or(
+            PathBuf::from_str("~").expect("Something has defintely gone terribly wrong"),
+        ))
+        .add_filter("Select fuel", &["csv", "txt"])
+        .set_can_create_directories(true)
+        .pick_file();
+    return sanitize_path(path);
 }
 
 pub async fn save_file_async() -> String {
     let path = FileDialog::new()
-        .set_directory("~")
+        .set_directory(std::env::current_dir().unwrap_or(
+            PathBuf::from_str("~").expect("Something has defintely gone terribly wrong"),
+        ))
         .add_filter("Select fuel", &["csv", "txt"])
         .set_can_create_directories(true)
         .save_file();
-
-    let p = match path {
-        Some(p) => p.as_path().to_string_lossy().to_string(),
-        _ => String::new(),
-    };
-    return p;
+    return sanitize_path(path);
 }
 
 pub async fn pick_command_file_async() -> String {
     let path = FileDialog::new()
-        .set_directory("~")
+        .set_directory(std::env::current_dir().unwrap_or(
+            PathBuf::from_str("~").expect("Something has defintely gone terribly wrong"),
+        ))
         .add_filter("Command file", &["cmd", "txt"])
         .add_filter("All files", &["*"])
         .pick_file();
-
-    let p = match path {
-        Some(p) => p.as_path().to_string_lossy().to_string(),
-        _ => String::new(),
-    };
-    p
+    return sanitize_path(path);
 }
 
 fn main() -> iced::Result {
