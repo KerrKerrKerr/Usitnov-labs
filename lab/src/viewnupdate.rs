@@ -368,3 +368,7 @@ impl AppState {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "viewndupdate/tests.rs"]
+mod tests;
